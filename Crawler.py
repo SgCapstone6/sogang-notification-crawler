@@ -1,16 +1,15 @@
 from urllib.request import urlopen, Request
-from urllib.parse import urlencode
 import chardet
-import re
 from bs4 import BeautifulSoup
 from collections import namedtuple
 from datetime import datetime
+import Cookie
 
 #trim_str is tuple of string (start_str, end_str)
 
 #Namedtuple
 crawler_info = namedtuple('crawler_info','wrap_tag title_tag time_tag trim_str')
-site_info = namedtuple('site_info','url crawler_L time_parser_L url_flag session')
+site_info = namedtuple('site_info','url_L crawler_L time_parser_L url_flag session')
 tag_info = namedtuple('tag_info','tag_name attr_name attr_value idx')
 crawling_info = namedtuple('crawling_result','year month day title url')
 
@@ -48,8 +47,9 @@ def find_by_tag_info(soup,tag_list):
 
 def notice_crawling(site, depth):
     #Initialization
-    notice_url = site.url
+    notice_url = site.url_L[depth]
     default_dt = datetime.strptime('','')
+    session = site.session
     idx = 1
     ret = []
     crawler = site.crawler_L[depth]
@@ -57,12 +57,19 @@ def notice_crawling(site, depth):
     url_flag = site.url_flag
 
     #Request HTML text
-    html = urlopen(notice_url).read()
+    
+    if session == True:
+        cookie = Cookie.make_cookie()
+        request = Request(notice_url)
+        request.add_header('cookie',cookie)
+        response = urlopen(request)
+        html = response.read()
+    else:        
+        html = urlopen(notice_url).read()
 
     #Encoding HTML text
     chdt = chardet.detect(html)
     html = html.decode(chdt['encoding'])
-    
     #Trim HTML and replace '\r'
     html = html.replace('\r','')
     #html = html.replace('&curren','&ampCurren') # and curren symbol replace
@@ -87,7 +94,8 @@ def notice_crawling(site, depth):
         #Title Crawling
         if crawler.title_tag != None :
             title_soup = find_by_tag_info(wrapper, crawler.title_tag) # url_wrapper which contains url tag
-            title_text = title_soup[0].text.strip()
+            title_text_L = [soup.text.strip() for soup in title_soup] 
+            title_text = '/'.join(title_text_L)
     
             if title_text.find('\n')>=0: #title exception
                 title_text = title_text[title_text.find('\n')+1 :]
@@ -99,19 +107,17 @@ def notice_crawling(site, depth):
             year,month,day = time.year, time.month, time.day
 
         #URL Crawling
-        if url_flag == True:
+        if url_flag[depth] == True:
             content_url = wrapper.find('a')['href']
             if content_url[0:4] != 'http':
                 if content_url[0] == '/':
                     content_url = "/".join(notice_url.split('/')[0:3]) + content_url
                 else :
                     content_url = notice_url[:notice_url.rfind('/')+1] + content_url
-            if depth == len(site.crawler_L) - 2: #url flag off
-                site.url_flag = False
                     
         #Recursive Crawling of notice URL
         if depth < len(site.crawler_L) - 1 :
-            site.url = content_url
+            site.url_L[depth+1]=content_url
             crawled = notice_crawling(site,depth+1)[0]
             if crawled.title != None :  #Overwrite title
                 title_text = crawled.title
@@ -137,9 +143,32 @@ def print_crawling_info(crawled_L):
         print('URL   :',crawled.url)
         idx += 1
 
+def jobevent_crawler():
+    notice_url = 'https://job.sogang.ac.kr/jobevent/list.aspx'
+    wrap_tag = [tag_info('tr',None,None,':')]
+    title_tag1 = [tag_info('td',None,None,'1:3')]
+    title_tag2 = [tag_info('td',None,None,'4')]
+    trim_str = ('<tbody>','</tbody>')
+    time_tag = None
+    crawler1 = crawler_info(wrap_tag,title_tag1,None,trim_str)
+    crawler2 = crawler_info(wrap_tag,title_tag2,None,trim_str)
+    site1 = site_info([notice_url],[crawler1],[None],[True], True)
+    site2 = site_info([notice_url],[crawler2],[None],[False], True)
+    crawled1 = notice_crawling(site1,0)
+    crawled2 = notice_crawling(site2,0)
+
+    now_dt = datetime.now()
+    ret_L = []
+    for i in range(len(crawled2)):
+        if crawled2[i].title != '-':
+            ret_L.append(crawling_info(now_dt.year,now_dt.month,now_dt.day\
+                                    ,crawled1[i].title,\
+                                    crawled1[i].url))
+    return ret_L
+    
+notice_url = 'http://acafice.sogang.ac.kr/front/cmsboardlist.do?siteId=acafice&bbsConfigFK=1382'
 
 
-notice_url = 'https://job.sogang.ac.kr/service/notice.aspx?boardid=3'
 wrap_tag = [tag_info('li',None,None,':')]
 title_tag = [tag_info('a','class','title','0')]
 time_tag = [tag_info('div',None,None,'0'),tag_info('span',None,None,'1')]
@@ -147,20 +176,11 @@ trim_str = ('<!-- 상단고정 시작 -->','<!-- List 끝 -->')
 time_re = '%Y.%m.%d'
 url_flag = True
 session = False
-
-import Cookie
-cookie = Cookie.make_cookie()
-url = 'https://job.sogang.ac.kr/jobevent/list.aspx'
-req = Request(url)
-req.add_header('cookie',cookie)
-res = urlopen(req)
-print(res.read().decode('utf-8'))
-
-    
-
-
 crawler = crawler_info(wrap_tag,title_tag,time_tag,trim_str)
-site = site_info(notice_url,[crawler],[time_re],url_flag, session)
-#print_crawling_info(notice_crawling(site,0))
+
+
+site = site_info([notice_url],[crawler],[time_re],[url_flag], session)
+#print_crawling_info(jobevent_crawler())
+print_crawling_info(notice_crawling(site,0))
 
 
