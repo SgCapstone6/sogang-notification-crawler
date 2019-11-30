@@ -5,13 +5,23 @@ from collections import namedtuple
 from datetime import datetime
 import Cookie
 
-#trim_str is tuple of string (start_str, end_str)
-
-#Namedtuple
-crawler_info = namedtuple('crawler_info','wrap_tag title_tag time_tag trim_str')
-site_info = namedtuple('site_info','url_L crawler_L time_parser_L url_flag session')
+#tag_info: namedtuple which stores tag information
+#it has 4 values (tag_name, attr_name, attr_value, idx)
 tag_info = namedtuple('tag_info','tag_name attr_name attr_value idx')
-crawling_info = namedtuple('crawling_result','year month day title url')
+
+#crawler_info: namedtuple which stores crawler information
+#it has 4 values (wrap_tag, title_tag, time_tag, trim_str)
+crawler_info = namedtuple('crawler_info','wrap_tag title_tag time_tag trim_str')
+
+#site_info : namedtuple which stores site informations
+#it has 6 values (site_id, url_L, crawler_L, time_parser_L, url_flag, session)
+site_info = namedtuple('site_info','site_id url_L crawler_L time_parser_L url_flag session')
+
+#crawling_info: namedtuple which stores result of crawling
+#It has 5 values (site_id, year, month, day, title, url)
+#site_id (int), year (int), month (int), day (int), title (str), url (str)
+crawling_info = namedtuple('crawling_result','site_id year month day title url')
+
 
 #starting from the location where start string appears, trim the text to the end string
 def trim_html(source, start_str,end_str):
@@ -50,6 +60,7 @@ def notice_crawling(site, depth):
     notice_url = site.url_L[depth]
     default_dt = datetime.strptime('','')
     session = site.session
+    site_id = site.site_id
     idx = 1
     ret = []
     crawler = site.crawler_L[depth]
@@ -130,7 +141,7 @@ def notice_crawling(site, depth):
             if day == default_dt.day : day = crawled.day 
                 
         idx +=1
-        ret.append(crawling_info(year,month,day,title_text,content_url))
+        ret.append(crawling_info(site_id,year,month,day,title_text,content_url))
     return ret
 
 #Print crawling info of site
@@ -138,11 +149,13 @@ def print_crawling_info(crawled_L):
     idx = 1
     for crawled in crawled_L:
         print('###',idx)
+        print('SITE  :',crawled.site_id)
         print('TITLE :',crawled.title)
         print('TIME  :',crawled.year,crawled.month,crawled.day)
         print('URL   :',crawled.url)
         idx += 1
 
+#Jobevent crawler is a function to crawl only jobevent notices in jobsogang page
 def jobevent_crawler():
     notice_url = 'https://job.sogang.ac.kr/jobevent/list.aspx'
     wrap_tag = [tag_info('tr',None,None,':')]
@@ -165,22 +178,35 @@ def jobevent_crawler():
                                     ,crawled1[i].title,\
                                     crawled1[i].url))
     return ret_L
-    
-notice_url = 'http://acafice.sogang.ac.kr/front/cmsboardlist.do?siteId=acafice&bbsConfigFK=1382'
 
 
-wrap_tag = [tag_info('li',None,None,':')]
-title_tag = [tag_info('a','class','title','0')]
-time_tag = [tag_info('div',None,None,'0'),tag_info('span',None,None,'1')]
-trim_str = ('<!-- 상단고정 시작 -->','<!-- List 끝 -->')
-time_re = '%Y.%m.%d'
-url_flag = True
+####################################    DB part  start  ##########################################
+site_id = 1
+notice_url = ['http://kyomok.sogang.ac.kr/front/cmsboardlist.do?siteId=kyomok&bbsConfigFK=1101']
+
+#Crawler : It's possible to exist many crawlers. so variable 'crawler' is a list []
+wrap_tag = [tag_info('li',None,None,':')] #crawler number 1
+title_tag = [tag_info('a','class','title','0')] #crawler number 1
+time_tag = [tag_info('div',None,None,'0'),tag_info('span',None,None,'1')] #crawler number 1
+trim_str = ('<!-- 상단고정 시작 -->','<!-- List 끝 -->') #crawler number 1
+crawler = [crawler_info(wrap_tag,title_tag,time_tag,trim_str)]
+
+#time_parser : It's possible to exist many time parsers. so variable 'time_parser' is a list []
+time_parser = ['%Y.%m.%d']
+
+#URL flag : It's possible to exist URL flags. so variable 'url_flag' is a list []
+url_flag = [True]
+
+#session
 session = False
-crawler = crawler_info(wrap_tag,title_tag,time_tag,trim_str)
+
+#Make site namedtuple by using (site_id, crawler,time_parser, url_flag, session) 
+site = site_info(site_id, notice_url,crawler,time_parser,url_flag, session)
 
 
-site = site_info([notice_url],[crawler],[time_re],[url_flag], session)
-#print_crawling_info(jobevent_crawler())
+####################################    DB part  end  ############################################
+
+
+# test and print crawling results
 print_crawling_info(notice_crawling(site,0))
-
-
+#print_crawling_info(jobevent_crawler()) # It's only used when we crawls job event in job sogang.
