@@ -260,13 +260,19 @@ for site_data in site_data_L:
     crawler_param = []
     time_parser_param = []
     for i in range(len(crawler_idx_L)):
-        crawler_param.append(crawler_L[int(crawler_idx_L[i])])
+        if crawler_idx_L[i] == 'None':
+            crawler_param.append(None)
+        else : crawler_param.append(crawler_L[int(crawler_idx_L[i])])
+        
         if time_parser_idx_L[i] == 'None':
             time_parser_param.append(None)
-        else:
-            time_parser_param.append(time_parser_L[int(time_parser_idx_L[i])])
+        else: time_parser_param.append(time_parser_L[int(time_parser_idx_L[i])])
+
     site = site_info(site_id,notice_url_param,crawler_param,time_parser_param,url_flag_param,session)
-    crawled_L = notice_crawling(site,0)
+    if site_id == 11 : #job event crawling
+        crawled_L = jobevent_crawler()
+    else : crawled_L = notice_crawling(site,0)
+    
     time_term = timedelta(days=4) #time_term = 1 day
     crawled_L = trim_by_time(crawled_L,time_term)
     print_crawling_info(crawled_L)
