@@ -1,9 +1,18 @@
 from urllib.request import urlopen, Request
-import chardet
+from urllib.parse import urlencode
+from chardet import detect
 from bs4 import BeautifulSoup
 from collections import namedtuple
-from datetime import datetime
-import Cookie
+from datetime import datetime, timedelta
+
+
+#######################       Temporary Code for session         ################################
+# Please enter your sogang id & password
+userid = ''
+passwd = ''
+#################################################################################################
+
+
 
 #tag_info: namedtuple which stores tag information
 #it has 4 values (tag_name, attr_name, attr_value, idx)
@@ -55,6 +64,18 @@ def find_by_tag_info(soup,tag_list):
         L = next_L
     return L
 
+def make_cookie():
+    global userid
+    global passwd
+    login_url='https://job.sogang.ac.kr/ajax/common/loginproc.aspx'
+    login_data = {'userid' : userid,'passwd' : passwd}
+    login_req = urlencode(login_data).encode('utf-8')
+    request = Request(login_url,login_req)
+    f=urlopen(request)
+    cookies = f.headers.get_all('Set-Cookie')
+    cookie = ';'.join(cookies)
+    return cookie
+
 def notice_crawling(site, depth):
     #Initialization
     notice_url = site.url_L[depth]
@@ -79,7 +100,7 @@ def notice_crawling(site, depth):
         html = urlopen(notice_url).read()
 
     #Encoding HTML text
-    chdt = chardet.detect(html)
+    chdt = detect(html)
     html = html.decode(chdt['encoding'])
     #Trim HTML and replace '\r'
     html = html.replace('\r','')
@@ -144,6 +165,15 @@ def notice_crawling(site, depth):
         ret.append(crawling_info(site_id,year,month,day,title_text,content_url))
     return ret
 
+def trim_by_time(crawled_L, time_term):
+    now  = datetime.now()
+    ret = []
+    for crawled in crawled_L:
+        post_time = datetime(crawled.year, crawled.month, crawled.day)
+        if time_term >= now - post_time:
+            ret.append(crawled)
+    return ret
+
 #Print crawling info of site
 def print_crawling_info(crawled_L):
     idx = 1
@@ -179,34 +209,93 @@ def jobevent_crawler():
                                     crawled1[i].url))
     return ret_L
 
-
 ####################################    DB part  start  ##########################################
-site_id = 1
-notice_url = ['http://kyomok.sogang.ac.kr/front/cmsboardlist.do?siteId=kyomok&bbsConfigFK=1101']
+
+crawler_L = [None] * 28
+time_parser_L = [None]* 12
+
+site_data_L = [['1','http://kyomok.sogang.ac.kr/front/cmsboardlist.do?siteId=kyomok&bbsConfigFK=1101',\
+                '1','1','TRUE','FALSE']]
+crawler_data_L = [['1','li,None,None,:','a,class,title,0','div,None,None,0/span,None,None,1',\
+                    '<!-- 상단고정 시작 -->,<!-- List 끝 -->']]
+time_parser_data_L = [['1','%Y.%m.%d']]
+
+for crawler_data in crawler_data_L:
+    crawler_id = int(crawler_data[0])
+    tag_L = [None,None,None]
+    for i in range(1,4):
+        if crawler_data[i] == 'None':
+            continue
+        tag_L[i-1] = []
+        for tag_data in crawler_data[i].split('/'):
+            tag_param = []
+            for tag_str in tag_data.split(','):
+                if tag_str == 'None':
+                    tag_param.append(None)
+                else: tag_param.append(tag_str)
+            tag_L[i-1].append(tag_info(*tag_param))
+    if crawler_data[4] == 'None':
+        trim_str = None
+    else: trim_str = tuple(crawler_data[4].split(','))
+    crawler_L[crawler_id] = crawler_info(tag_L[0],tag_L[1],tag_L[2],trim_str)
+
+for time_parser_data in time_parser_data_L:
+    time_parser_id = int(time_parser_data[0])
+    time_re = time_parser_data[1]
+    time_parser_L[time_parser_id] = time_re
+
+for site_data in site_data_L:
+    site_id = int(site_data[0])
+    notice_url_param = [site_data[1]]
+    crawler_idx_L = site_data[2].split(',')
+    time_parser_idx_L = site_data[3].split(',')
+    
+    url_flag_param = [flag.lower() == 'true' for flag in site_data[4].split(',')]
+    notice_url_param += [None] * (len(crawler_idx_L) -1)
+
+    if 10 <= site_id <= 16: #job sogang crawling
+        session = True
+    else: session = False
+
+    crawler_param = []
+    time_parser_param = []
+    for i in range(len(crawler_idx_L)):
+        crawler_param.append(crawler_L[int(crawler_idx_L[i])])
+        if time_parser_idx_L[i] == 'None':
+            time_parser_param.append(None)
+        else:
+            time_parser_param.append(time_parser_L[int(time_parser_idx_L[i])])
+    site = site_info(site_id,notice_url_param,crawler_param,time_parser_param,url_flag_param,session)
+    crawled_L = notice_crawling(site,0)
+    time_term = timedelta(days=4) #time_term = 1 day
+    crawled_L = trim_by_time(crawled_L,time_term)
+    print_crawling_info(crawled_L)
+    
+#site_id = 1
+#notice_url = ['http://kyomok.sogang.ac.kr/front/cmsboardlist.do?siteId=kyomok&bbsConfigFK=1101']
 
 #Crawler : It's possible to exist many crawlers. so variable 'crawler' is a list []
-wrap_tag = [tag_info('li',None,None,':')] #crawler number 1
-title_tag = [tag_info('a','class','title','0')] #crawler number 1
-time_tag = [tag_info('div',None,None,'0'),tag_info('span',None,None,'1')] #crawler number 1
-trim_str = ('<!-- 상단고정 시작 -->','<!-- List 끝 -->') #crawler number 1
-crawler = [crawler_info(wrap_tag,title_tag,time_tag,trim_str)]
+#wrap_tag = [tag_info('li',None,None,':')] #crawler number 1
+#title_tag = [tag_info('a','class','title','0')] #crawler number 1
+#time_tag = [tag_info('div',None,None,'0'),tag_info('span',None,None,'1')] #crawler number 1
+#trim_str = ('<!-- 상단고정 시작 -->','<!-- List 끝 -->') #crawler number 1
+#crawler = [crawler_info(wrap_tag,title_tag,time_tag,trim_str)]
 
 #time_parser : It's possible to exist many time parsers. so variable 'time_parser' is a list []
-time_parser = ['%Y.%m.%d']
+#time_parser = ['%Y.%m.%d']
 
 #URL flag : It's possible to exist URL flags. so variable 'url_flag' is a list []
-url_flag = [True]
+#url_flag = [True]
 
 #session
-session = False
+#session = False
 
 #Make site namedtuple by using (site_id, crawler,time_parser, url_flag, session) 
-site = site_info(site_id, notice_url,crawler,time_parser,url_flag, session)
-
+#site = site_info(site_id, notice_url,crawler,time_parser,url_flag, session)
 
 ####################################    DB part  end  ############################################
 
 
 # test and print crawling results
-print_crawling_info(notice_crawling(site,0))
+#print_crawling_info(notice_crawling(site,0))
 #print_crawling_info(jobevent_crawler()) # It's only used when we crawls job event in job sogang.
