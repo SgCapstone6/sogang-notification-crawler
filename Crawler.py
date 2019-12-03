@@ -174,7 +174,11 @@ def notice_crawling(site, depth):
         #Time Crawling
         if crawler.time_tag != None and time_parser != None :
             time_text = find_by_tag_info(wrapper,crawler.time_tag)[0].text.strip()
-            time = datetime.strptime(time_text,time_parser) #extract time infromation by using time expression
+            try :
+              time = datetime.strptime(time_text,time_parser) #extract time infromation by using time expression
+            except Exception as ex:
+              time = datetime.now()
+              
             year,month,day = time.year, time.month, time.day
 
         #URL Crawling
