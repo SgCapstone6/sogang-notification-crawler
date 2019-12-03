@@ -1,17 +1,44 @@
+import json
+from linebot import LineBotApi
+from linebot.models import TextSendMessage
+from linebot.exceptions import LineBotApiError
 from urllib.request import urlopen, Request
 from urllib.parse import urlencode
 from chardet import detect
 from bs4 import BeautifulSoup
 from collections import namedtuple
 from datetime import datetime, timedelta
+import pymysql
+import ssl
 
-
-#######################       Temporary Code for session         ################################
+#######################       Temporary Code          ################################
 # Please enter your sogang id & password
 userid = ''
 passwd = ''
+
+crawler_L = [None] * 40
+time_parser_L = [None]* 40
+
+day_par = 1
+host_name = ''
+user_name = ''
+password = ''
+db_name = 'sogangNotification_db'
+
+line_bot_api = LineBotApi('')
+
 #################################################################################################
 
+
+
+
+def send (uId, string): #send string to uId
+  try:
+    line_bot_api.push_message(uId, TextSendMessage(string))
+  except LineBotApiError as e:
+    print("error"); #Exception Handling(Line Bot Error)
+    
+#----------------
 
 
 #tag_info: namedtuple which stores tag information
@@ -64,14 +91,20 @@ def find_by_tag_info(soup,tag_list):
         L = next_L
     return L
 
-def make_cookie():
+def make_cookie(site_id, url):
     global userid
     global passwd
-    login_url='https://job.sogang.ac.kr/ajax/common/loginproc.aspx'
-    login_data = {'userid' : userid,'passwd' : passwd}
+
+    if 10 <= site_id <= 16: #Job sogang
+        login_url='https://job.sogang.ac.kr/ajax/common/loginproc.aspx'
+        login_data = {'userid' : userid,'passwd' : passwd}
+    else:
+        login_url = "/".join(url.split('/')[0:3])+'/loginprocess.do'
+        login_data = {'userID' : userid, 'userPW' : passwd}
     login_req = urlencode(login_data).encode('utf-8')
     request = Request(login_url,login_req)
-    f=urlopen(request)
+    context = ssl._create_unverified_context()
+    f=urlopen(request,context=context)
     cookies = f.headers.get_all('Set-Cookie')
     cookie = ';'.join(cookies)
     return cookie
@@ -89,22 +122,26 @@ def notice_crawling(site, depth):
     url_flag = site.url_flag
 
     #Request HTML text
-    
+
     if session == True:
-        cookie = Cookie.make_cookie()
+        cookie = make_cookie(site_id,notice_url)
         request = Request(notice_url)
         request.add_header('cookie',cookie)
-        response = urlopen(request)
+        context = ssl._create_unverified_context()
+        response = urlopen(request,context=context)
         html = response.read()
-    else:        
+    else:
         html = urlopen(notice_url).read()
 
     #Encoding HTML text
     chdt = detect(html)
+    if chdt['encoding'] == 'Windows-1254':
+        chdt['encoding'] = 'utf-8'
     html = html.decode(chdt['encoding'])
     #Trim HTML and replace '\r'
     html = html.replace('\r','')
-    #html = html.replace('&curren','&ampCurren') # and curren symbol replace
+    html = html.replace('&curren','&ampCurren') # and curren symbol replace
+    html = html.replace('&#39A','')
     if crawler.trim_str != None:
         html =trim_html(html,*(crawler.trim_str))
 
@@ -126,9 +163,9 @@ def notice_crawling(site, depth):
         #Title Crawling
         if crawler.title_tag != None :
             title_soup = find_by_tag_info(wrapper, crawler.title_tag) # url_wrapper which contains url tag
-            title_text_L = [soup.text.strip() for soup in title_soup] 
+            title_text_L = [soup.text.strip() for soup in title_soup]
             title_text = '/'.join(title_text_L)
-    
+
             if title_text.find('\n')>=0: #title exception
                 title_text = title_text[title_text.find('\n')+1 :]
 
@@ -146,7 +183,7 @@ def notice_crawling(site, depth):
                     content_url = "/".join(notice_url.split('/')[0:3]) + content_url
                 else :
                     content_url = notice_url[:notice_url.rfind('/')+1] + content_url
-                    
+
         #Recursive Crawling of notice URL
         if depth < len(site.crawler_L) - 1 :
             site.url_L[depth+1]=content_url
@@ -159,12 +196,11 @@ def notice_crawling(site, depth):
             #Merge time NOT overwrite
             if year == default_dt.year : year = crawled.year
             if month == default_dt.month : month = crawled.month
-            if day == default_dt.day : day = crawled.day 
-                
+            if day == default_dt.day : day = crawled.day
+
         idx +=1
         ret.append(crawling_info(site_id,year,month,day,title_text,content_url))
     return ret
-
 def trim_by_time(crawled_L, time_term):
     now  = datetime.now()
     ret = []
@@ -173,7 +209,6 @@ def trim_by_time(crawled_L, time_term):
         if time_term >= now - post_time:
             ret.append(crawled)
     return ret
-
 #Print crawling info of site
 def print_crawling_info(crawled_L):
     idx = 1
@@ -195,8 +230,8 @@ def jobevent_crawler():
     time_tag = None
     crawler1 = crawler_info(wrap_tag,title_tag1,None,trim_str)
     crawler2 = crawler_info(wrap_tag,title_tag2,None,trim_str)
-    site1 = site_info([notice_url],[crawler1],[None],[True], True)
-    site2 = site_info([notice_url],[crawler2],[None],[False], True)
+    site1 = site_info(11,[notice_url],[crawler1],[None],[True], True)
+    site2 = site_info(11,[notice_url],[crawler2],[None],[False], True)
     crawled1 = notice_crawling(site1,0)
     crawled2 = notice_crawling(site2,0)
 
@@ -204,104 +239,133 @@ def jobevent_crawler():
     ret_L = []
     for i in range(len(crawled2)):
         if crawled2[i].title != '-':
-            ret_L.append(crawling_info(now_dt.year,now_dt.month,now_dt.day\
+            ret_L.append(crawling_info(11,now_dt.year,now_dt.month,now_dt.day\
                                     ,crawled1[i].title,\
                                     crawled1[i].url))
     return ret_L
 
 ####################################    DB part  start  ##########################################
+def crawling(db):
+    site_data_L=[]
+    crawler_data_L=[]
+    time_parser_data_L=[]
+    with db.cursor() as cursor:
+        sql_site_list = 'select * from site_info'
+        cursor.execute(sql_site_list)
+        rows = cursor.fetchall()
+        for row in rows:
+            site_data_L.append([str(row[0]),row[4],row[5],row[6],row[7],'FALSE'])
+        sql_site_list = 'select * from crawler'
+        cursor.execute(sql_site_list)
+        rows = cursor.fetchall()
+        for row in rows:
+            crawler_data_L.append([str(row[0]),row[1],row[2],row[3],row[4]])
+        sql_site_list = 'select * from time_parser'
+        cursor.execute(sql_site_list)
+        rows = cursor.fetchall()
+        for row in rows:
+            time_parser_data_L.append([str(row[0]),row[1]])
 
-crawler_L = [None] * 28
-time_parser_L = [None]* 12
+    for crawler_data in crawler_data_L:
+        crawler_id = int(crawler_data[0])
+        tag_L = [None,None,None]
+        for i in range(1,4):
+            if crawler_data[i] == 'None':
+                continue
+            tag_L[i-1] = []
+            for tag_data in crawler_data[i].split('/'):
+                tag_param = []
+                for tag_str in tag_data.split(','):
+                    if tag_str == 'None':
+                        tag_param.append(None)
+                    else: tag_param.append(tag_str)
+                tag_L[i-1].append(tag_info(*tag_param))
+        if crawler_data[4] == 'None':
+            trim_str = None
+        else: trim_str = tuple(crawler_data[4].split(','))
+        crawler_L[crawler_id] = crawler_info(tag_L[0],tag_L[1],tag_L[2],trim_str)
 
-site_data_L = [['1','http://kyomok.sogang.ac.kr/front/cmsboardlist.do?siteId=kyomok&bbsConfigFK=1101',\
-                '1','1','TRUE','FALSE']]
-crawler_data_L = [['1','li,None,None,:','a,class,title,0','div,None,None,0/span,None,None,1',\
-                    '<!-- 상단고정 시작 -->,<!-- List 끝 -->']]
-time_parser_data_L = [['1','%Y.%m.%d']]
+    for time_parser_data in time_parser_data_L:
+        time_parser_id = int(time_parser_data[0])
+        time_re = time_parser_data[1]
+        time_parser_L[time_parser_id] = time_re
+    final_result = []
+    for site_data in site_data_L:
+        site_id = int(site_data[0])
+     
+        notice_url_param = [site_data[1]]
+        crawler_idx_L = site_data[2].split(',')
+        time_parser_idx_L = site_data[3].split(',')
+        url_flag_param = [flag.lower() == 'true' for flag in site_data[4].split(',')]
+        notice_url_param += [None] * (len(crawler_idx_L) -1)
 
-for crawler_data in crawler_data_L:
-    crawler_id = int(crawler_data[0])
-    tag_L = [None,None,None]
-    for i in range(1,4):
-        if crawler_data[i] == 'None':
-            continue
-        tag_L[i-1] = []
-        for tag_data in crawler_data[i].split('/'):
-            tag_param = []
-            for tag_str in tag_data.split(','):
-                if tag_str == 'None':
-                    tag_param.append(None)
-                else: tag_param.append(tag_str)
-            tag_L[i-1].append(tag_info(*tag_param))
-    if crawler_data[4] == 'None':
-        trim_str = None
-    else: trim_str = tuple(crawler_data[4].split(','))
-    crawler_L[crawler_id] = crawler_info(tag_L[0],tag_L[1],tag_L[2],trim_str)
-
-for time_parser_data in time_parser_data_L:
-    time_parser_id = int(time_parser_data[0])
-    time_re = time_parser_data[1]
-    time_parser_L[time_parser_id] = time_re
-
-for site_data in site_data_L:
-    site_id = int(site_data[0])
-    notice_url_param = [site_data[1]]
-    crawler_idx_L = site_data[2].split(',')
-    time_parser_idx_L = site_data[3].split(',')
-    
-    url_flag_param = [flag.lower() == 'true' for flag in site_data[4].split(',')]
-    notice_url_param += [None] * (len(crawler_idx_L) -1)
-
-    if 10 <= site_id <= 16: #job sogang crawling
-        session = True
-    else: session = False
-
-    crawler_param = []
-    time_parser_param = []
-    for i in range(len(crawler_idx_L)):
-        if crawler_idx_L[i] == 'None':
-            crawler_param.append(None)
-        else : crawler_param.append(crawler_L[int(crawler_idx_L[i])])
+        if 10 <= site_id <= 16 or site_id is 101 or site_id is 203 or site_id is 103 or 208 <= site_id <= 214: #job sogang crawling
+            session = True
+        else: session = False
         
-        if time_parser_idx_L[i] == 'None':
-            time_parser_param.append(None)
-        else: time_parser_param.append(time_parser_L[int(time_parser_idx_L[i])])
+        try:
+            crawler_param = []
+            time_parser_param = []
+            for i in range(len(crawler_idx_L)):
+                if crawler_idx_L[i] == 'None':
+                    crawler_param.append(None)
+                else : crawler_param.append(crawler_L[int(crawler_idx_L[i])])
 
-    site = site_info(site_id,notice_url_param,crawler_param,time_parser_param,url_flag_param,session)
-    if site_id == 11 : #job event crawling
-        crawled_L = jobevent_crawler()
-    else : crawled_L = notice_crawling(site,0)
+                if time_parser_idx_L[i] == 'None':
+                    time_parser_param.append(None)
+                else: time_parser_param.append(time_parser_L[int(time_parser_idx_L[i])])
+
+            site = site_info(site_id,notice_url_param,crawler_param,time_parser_param,url_flag_param,session)
+            if site_id == 11 : #job event crawling
+                crawled_L = jobevent_crawler()
+            else : crawled_L = notice_crawling(site,0)
+
+            time_term = timedelta(days=day_par) #time_term = 1 day
+            crawled_L = trim_by_time(crawled_L,time_term)
+      #print_crawling_info(crawled_L)
+            final_result.append(crawled_L.copy())
+        except Exception as ex:
+            print("error :",site_id,ex)
+    return final_result
+#main
+def lambda_handler(event, context):
+    # TODO implement
+    db = pymysql.connect(host = host_name, port =3306,
+          user = user_name,
+          passwd = password,
+          db = db_name,
+          charset = 'utf8')
+            
+         
+    results = crawling(db)
     
-    time_term = timedelta(days=4) #time_term = 1 day
-    crawled_L = trim_by_time(crawled_L,time_term)
-    print_crawling_info(crawled_L)
-    
-#site_id = 1
-#notice_url = ['http://kyomok.sogang.ac.kr/front/cmsboardlist.do?siteId=kyomok&bbsConfigFK=1101']
-
-#Crawler : It's possible to exist many crawlers. so variable 'crawler' is a list []
-#wrap_tag = [tag_info('li',None,None,':')] #crawler number 1
-#title_tag = [tag_info('a','class','title','0')] #crawler number 1
-#time_tag = [tag_info('div',None,None,'0'),tag_info('span',None,None,'1')] #crawler number 1
-#trim_str = ('<!-- 상단고정 시작 -->','<!-- List 끝 -->') #crawler number 1
-#crawler = [crawler_info(wrap_tag,title_tag,time_tag,trim_str)]
-
-#time_parser : It's possible to exist many time parsers. so variable 'time_parser' is a list []
-#time_parser = ['%Y.%m.%d']
-
-#URL flag : It's possible to exist URL flags. so variable 'url_flag' is a list []
-#url_flag = [True]
-
-#session
-#session = False
-
-#Make site namedtuple by using (site_id, crawler,time_parser, url_flag, session) 
-#site = site_info(site_id, notice_url,crawler,time_parser,url_flag, session)
-
-####################################    DB part  end  ############################################
-
-
-# test and print crawling results
-#print_crawling_info(notice_crawling(site,0))
-#print_crawling_info(jobevent_crawler()) # It's only used when we crawls job event in job sogang.
+    with db.cursor() as cursor:
+        
+        for result in results:
+            if result == [] :
+                continue
+            sql = "select user_id from site_subscribe where site_id = %s"
+            
+            cursor.execute(sql,str(result[0].site_id))
+            rows = cursor.fetchall()
+            for row in rows:
+                send(row[0], result[0].title + '\n' + result[0].url + '\n')
+            sql = "select word from word_subscribe "
+            cursor.execute(sql)
+            rows = cursor.fetchall()
+            for row in rows:
+                if row[0] in result[0].title:
+                    sql = "select user_id from word_subscribe where word = %s"
+                    cursor.execute(sql,row[0])
+                    users = cursor.fetchall()
+                    for user in users:
+                        send(user[0], result[0].title + '\n' + result[0].url + '\n')
+            
+            
+    db.close()
+    return {
+        'statusCode': 200,
+        'body': json.dumps("test")
+    }
+if __name__ == "__main__":
+    lambda_handler(None,None)
