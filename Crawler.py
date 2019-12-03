@@ -27,6 +27,8 @@ db_name = 'sogangNotification_db'
 
 line_bot_api = LineBotApi('')
 
+now = datetime.now()
+time_term = timedelta(days = day_par)
 #################################################################################################
 
 
@@ -197,7 +199,11 @@ def notice_crawling(site, depth):
             if year == default_dt.year : year = crawled.year
             if month == default_dt.month : month = crawled.month
             if day == default_dt.day : day = crawled.day
-
+        if depth == 0:
+          global now, time_term
+          post_time = datetime(year,month,day)
+          if time_term < now - post_time:
+            break
         idx +=1
         ret.append(crawling_info(site_id,year,month,day,title_text,content_url))
     return ret
@@ -320,8 +326,8 @@ def crawling(db):
                 crawled_L = jobevent_crawler()
             else : crawled_L = notice_crawling(site,0)
 
-            time_term = timedelta(days=day_par) #time_term = 1 day
-            crawled_L = trim_by_time(crawled_L,time_term)
+            #time_term = timedelta(days=day_par) #time_term = 1 day
+            #crawled_L = trim_by_time(crawled_L,time_term)
       #print_crawling_info(crawled_L)
             final_result.append(crawled_L.copy())
         except Exception as ex:
