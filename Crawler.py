@@ -23,12 +23,10 @@ day_par = 1
 host_name = ''
 user_name = ''
 password = ''
-db_name = 'sogangNotification_db'
+db_name = ''
 
 line_bot_api = LineBotApi('')
 
-now = datetime.now()
-time_term = timedelta(days = day_par)
 #################################################################################################
 
 
@@ -141,11 +139,11 @@ def notice_crawling(site, depth):
         chdt['encoding'] = 'utf-8'
     html = html.decode(chdt['encoding'])
     #Trim HTML and replace '\r'
+    if crawler.trim_str != None:
+        html =trim_html(html,*(crawler.trim_str))
     html = html.replace('\r','')
     html = html.replace('&curren','&ampCurren') # and curren symbol replace
     html = html.replace('&#39A','')
-    if crawler.trim_str != None:
-        html =trim_html(html,*(crawler.trim_str))
 
     #Parse html and make a bs4 class
     soup = BeautifulSoup(html,'html.parser')
@@ -174,11 +172,7 @@ def notice_crawling(site, depth):
         #Time Crawling
         if crawler.time_tag != None and time_parser != None :
             time_text = find_by_tag_info(wrapper,crawler.time_tag)[0].text.strip()
-            try :
-              time = datetime.strptime(time_text,time_parser) #extract time infromation by using time expression
-            except Exception as ex:
-              time = datetime.now()
-              
+            time = datetime.strptime(time_text,time_parser) #extract time infromation by using time expression
             year,month,day = time.year, time.month, time.day
 
         #URL Crawling
@@ -204,7 +198,8 @@ def notice_crawling(site, depth):
             if month == default_dt.month : month = crawled.month
             if day == default_dt.day : day = crawled.day
         if depth == 0:
-          global now, time_term
+          now = datetime.now()
+          time_term = timedelta(days=1)
           post_time = datetime(year,month,day)
           if time_term < now - post_time:
             break
@@ -309,7 +304,7 @@ def crawling(db):
         url_flag_param = [flag.lower() == 'true' for flag in site_data[4].split(',')]
         notice_url_param += [None] * (len(crawler_idx_L) -1)
 
-        if 10 <= site_id <= 16 or site_id is 101 or site_id is 203 or site_id is 103 or 208 <= site_id <= 214: #job sogang crawling
+        if (10 <= site_id <= 16) or site_id == 101 or site_id == 203 or site_id == 103 or 208 <= site_id <= 214: #job sogang crawling
             session = True
         else: session = False
         
@@ -329,7 +324,8 @@ def crawling(db):
             if site_id == 11 : #job event crawling
                 crawled_L = jobevent_crawler()
             else : crawled_L = notice_crawling(site,0)
-
+            print(site_id)
+            print_crawling_info(crawled_L)
             #time_term = timedelta(days=day_par) #time_term = 1 day
             #crawled_L = trim_by_time(crawled_L,time_term)
       #print_crawling_info(crawled_L)
@@ -377,5 +373,3 @@ def lambda_handler(event, context):
         'statusCode': 200,
         'body': json.dumps("test")
     }
-if __name__ == "__main__":
-    lambda_handler(None,None)
