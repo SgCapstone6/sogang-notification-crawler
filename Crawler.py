@@ -350,24 +350,36 @@ def lambda_handler(event, context):
         for result in results:
             if result == [] :
                 continue
+            #advance subscribe
+            sql = "select user_id,word from word_subscribe where site_id = %s"
+            cursor.execute(sql,str(result[0].site_id))
+            rows = cursor.fetchall()
+
+            for row in rows:#row = [word,user_id]
+                user_id = row[0]
+                word = row[1]
+                if word in result[0].title:
+                    send(user_id, result[0].title + '\n' + result[0].url + '\n')
+
+            #site subscribe
             sql = "select user_id from site_subscribe where site_id = %s"
-            
             cursor.execute(sql,str(result[0].site_id))
             rows = cursor.fetchall()
             for row in rows:
                 send(row[0], result[0].title + '\n' + result[0].url + '\n')
-            sql = "select word from word_subscribe "
+
+            #word subscribe
+            sql = "select word,site_id from word_subscribe"
             cursor.execute(sql)
             rows = cursor.fetchall()
             for row in rows:
-                if row[0] in result[0].title:
+                if str(row[1]) == '0' and row[0] in result[0].title:#not advance subscribe and word in title
                     sql = "select user_id from word_subscribe where word = %s"
                     cursor.execute(sql,row[0])
                     users = cursor.fetchall()
                     for user in users:
                         send(user[0], result[0].title + '\n' + result[0].url + '\n')
-            
-            
+
     db.close()
     return {
         'statusCode': 200,
