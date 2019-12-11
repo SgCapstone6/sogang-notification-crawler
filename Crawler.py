@@ -199,7 +199,7 @@ def notice_crawling(site, depth):
             if day == default_dt.day : day = crawled.day
         if depth == 0:
           now = datetime.now()
-          time_term = timedelta(days=1)
+          time_term = timedelta(days=day_par)
           post_time = datetime(year,month,day)
           if time_term < now - post_time:
             break
@@ -297,7 +297,7 @@ def crawling(db):
     final_result = []
     for site_data in site_data_L:
         site_id = int(site_data[0])
-     
+        
         notice_url_param = [site_data[1]]
         crawler_idx_L = site_data[2].split(',')
         time_parser_idx_L = site_data[3].split(',')
@@ -344,42 +344,45 @@ def lambda_handler(event, context):
             
          
     results = crawling(db)
-    
+    print(results)
     with db.cursor() as cursor:
         
         for result in results:
             if result == [] :
                 continue
+            for posted_line in result:
             #advance subscribe
-            sql = "select user_id,word from word_subscribe where site_id = %s"
-            cursor.execute(sql,str(result[0].site_id))
-            rows = cursor.fetchall()
-
-            for row in rows:#row = [word,user_id]
-                user_id = row[0]
-                word = row[1]
-                if word in result[0].title:
-                    send(user_id, result[0].title + '\n' + result[0].url + '\n')
+                sql = "select user_id,word from word_subscribe where site_id = %s"
+                cursor.execute(sql,str(posted_line.site_id))
+                rows = cursor.fetchall()
+            
+                for row in rows:#row = [word,user_id]
+                    user_id = row[0]
+                    word = row[1]
+                    if word in posted_line.title:
+                        send(user_id, posted_line.title + '\n' + posted_line.url + '\n')
 
             #site subscribe
-            sql = "select user_id from site_subscribe where site_id = %s"
-            cursor.execute(sql,str(result[0].site_id))
-            rows = cursor.fetchall()
-            for row in rows:
-                send(row[0], result[0].title + '\n' + result[0].url + '\n')
+                sql = "select user_id from site_subscribe where site_id = %s"
+                cursor.execute(sql,str(posted_line.site_id))
+                rows = cursor.fetchall()
+                for row in rows:
+                    send(row[0], posted_line.title + '\n' + posted_line + '\n')
 
             #word subscribe
-            sql = "select word,site_id from word_subscribe"
-            cursor.execute(sql)
-            rows = cursor.fetchall()
-            for row in rows:
-                if str(row[1]) == '0' and row[0] in result[0].title:#not advance subscribe and word in title
-                    sql = "select user_id from word_subscribe where word = %s"
-                    cursor.execute(sql,row[0])
-                    users = cursor.fetchall()
-                    for user in users:
-                        send(user[0], result[0].title + '\n' + result[0].url + '\n')
+                sql = "select word,site_id from word_subscribe"
+                cursor.execute(sql)
+                rows = cursor.fetchall()
+                for row in rows:
+                    if str(row[1]) == '0' and row[0] in posted_line.title:#not advance subscribe and word in title
+                        sql = "select user_id from word_subscribe where word = %s"
+                        cursor.execute(sql,row[0])
+                        users = cursor.fetchall()
+                        for user in users:
+                            send(user[0], posted_line.title + '\n' + posted_line.url + '\n')
 
+            
+            
     db.close()
     return {
         'statusCode': 200,
