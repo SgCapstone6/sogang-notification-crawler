@@ -33,11 +33,10 @@ line_bot_api = LineBotApi('')
 
 
 def send (uId, string): #send string to uId
-  try:
-    line_bot_api.push_message(uId, TextSendMessage(string))
-  except LineBotApiError as e:
-    print("error"); #Exception Handling(Line Bot Error)
-    
+    try:
+        line_bot_api.push_message(uId, TextSendMessage(string))
+    except LineBotApiError as e:
+        print("error"); #Exception Handling(Line Bot Error)
 #----------------
 
 
@@ -297,7 +296,7 @@ def crawling(db):
     final_result = []
     for site_data in site_data_L:
         site_id = int(site_data[0])
-        
+
         notice_url_param = [site_data[1]]
         crawler_idx_L = site_data[2].split(',')
         time_parser_idx_L = site_data[3].split(',')
@@ -307,7 +306,7 @@ def crawling(db):
         if (10 <= site_id <= 16) or site_id == 101 or site_id == 203 or site_id == 103 or 208 <= site_id <= 214: #job sogang crawling
             session = True
         else: session = False
-        
+
         try:
             crawler_param = []
             time_parser_param = []
@@ -341,49 +340,61 @@ def lambda_handler(event, context):
           passwd = password,
           db = db_name,
           charset = 'utf8')
-            
-         
-    results = crawling(db)
-    print(results)
-    with db.cursor() as cursor:
-        
-        for result in results:
-            if result == [] :
-                continue
-            for posted_line in result:
-            #advance subscribe
-                sql = "select user_id,word from word_subscribe where site_id = %s"
-                cursor.execute(sql,str(posted_line.site_id))
-                rows = cursor.fetchall()
-            
-                for row in rows:#row = [word,user_id]
-                    user_id = row[0]
-                    word = row[1]
-                    if word in posted_line.title:
-                        send(user_id, posted_line.title + '\n' + posted_line.url + '\n')
 
-            #site subscribe
-                sql = "select user_id from site_subscribe where site_id = %s"
-                cursor.execute(sql,str(posted_line.site_id))
-                rows = cursor.fetchall()
-                for row in rows:
-                    send(row[0], posted_line.title + '\n' + posted_line + '\n')
+    try:
+        results = crawling(db)
+        with db.cursor() as cursor:
+            sql = 'TRUNCATE TABLE crawling_datas'
+            cursor.execute(sql)
+            for result in results:
+                if result == [] :
+                    continue
+                for posted_line in result:
+                    sql = 'INSERT INTO crawling_datas VALUE(%s,%s);'
+                    cursor.execute(sql,(posted_line.title,str(posted_line.site_id)))
 
-            #word subscribe
-                sql = "select word,site_id from word_subscribe"
-                cursor.execute(sql)
-                rows = cursor.fetchall()
-                for row in rows:
-                    if str(row[1]) == '0' and row[0] in posted_line.title:#not advance subscribe and word in title
-                        sql = "select user_id from word_subscribe where word = %s"
-                        cursor.execute(sql,row[0])
-                        users = cursor.fetchall()
-                        for user in users:
-                            send(user[0], posted_line.title + '\n' + posted_line.url + '\n')
+                    user_set = set()
+                #advance subscribe
+                    sql = "select user_id,word from word_subscribe where site_id = %s"
+                    cursor.execute(sql,str(posted_line.site_id))
+                    rows = cursor.fetchall()
 
-            
-            
-    db.close()
+                    for row in rows:#row = [word,user_id]
+                        user_id = row[0]
+                        word = row[1]
+                        if word in posted_line.title:
+                            if user_id not in user_set:
+                                send(user_id, '키워드 구독\n'+posted_line.title + '\n' + posted_line.url + '\n')
+                                user_set.add(user_id)
+
+
+                #site subscribe
+                    sql = "select user_id from site_subscribe where site_id = %s"
+                    cursor.execute(sql,str(posted_line.site_id))
+                    rows = cursor.fetchall()
+                    for row in rows:
+                        user_id = row[0]
+                        if user_id not in user_set:
+                            send(user_id, '사이트 구독\n'+posted_line.title + '\n' + posted_line + '\n')
+                            user_set.add(user_id)
+
+                #word subscribe
+                    sql = "select word,site_id from word_subscribe"
+                    cursor.execute(sql)
+                    rows = cursor.fetchall()
+                    for row in rows:
+                        if str(row[1]) == '0' and row[0] in posted_line.title:#not advance subscribe and word in title
+                            sql = "select user_id from word_subscribe where word = %s"
+                            cursor.execute(sql,row[0])
+                            users = cursor.fetchall()
+                            for user in users:
+                                if user[0] not in user_set:
+                                    send(user[0], '고급구독\n'+posted_line.title + '\n' + posted_line.url + '\n')
+                                    user_set(user[0])
+            db.commit()
+    except Exception as ex:
+        print(ex)
+        db.close()
     return {
         'statusCode': 200,
         'body': json.dumps("test")
