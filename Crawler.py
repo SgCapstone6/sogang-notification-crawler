@@ -375,7 +375,7 @@ def lambda_handler(event, context):
                     for row in rows:
                         user_id = row[0]
                         if user_id not in user_set:
-                            send(user_id, '사이트 구독\n'+posted_line.title + '\n' + posted_line + '\n')
+                            send(user_id, '사이트 구독\n'+posted_line.title + '\n' + posted_line.url + '\n')
                             user_set.add(user_id)
 
                 #word subscribe
