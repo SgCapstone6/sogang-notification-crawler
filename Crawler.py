@@ -364,7 +364,7 @@ def lambda_handler(event, context):
                         word = row[1]
                         if word in posted_line.title:
                             if user_id not in user_set:
-                                send(user_id, '키워드 구독\n'+posted_line.title + '\n' + posted_line.url + '\n')
+                                send(user_id, '고급구독\n'+posted_line.title + '\n' + posted_line.url + '\n')
                                 user_set.add(user_id)
 
 
@@ -384,13 +384,13 @@ def lambda_handler(event, context):
                     rows = cursor.fetchall()
                     for row in rows:
                         if str(row[1]) == '0' and row[0] in posted_line.title:#not advance subscribe and word in title
-                            sql = "select user_id from word_subscribe where word = %s"
+                            sql = "select user_id from word_subscribe where word = %s and site_id = 0"
                             cursor.execute(sql,row[0])
                             users = cursor.fetchall()
                             for user in users:
                                 if user[0] not in user_set:
-                                    send(user[0], '고급구독\n'+posted_line.title + '\n' + posted_line.url + '\n')
-                                    user_set(user[0])
+                                    send(user[0], '키워드 구독\n'+posted_line.title + '\n' + posted_line.url + '\n')
+                                    user_set.add(user[0])
             db.commit()
     except Exception as ex:
         print(ex)
