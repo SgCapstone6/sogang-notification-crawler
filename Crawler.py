@@ -227,10 +227,11 @@ def print_crawling_info(crawled_L):
 #Jobevent crawler is a function to crawl only jobevent notices in jobsogang page
 def jobevent_crawler():
     notice_url = 'https://job.sogang.ac.kr/jobevent/list.aspx'
-    cookie = make_cookie()
+    cookie = make_cookie(11,notice_url)
     request = Request(notice_url)
     request.add_header('cookie',cookie)
-    response = urlopen(request)
+    context = ssl._create_unverified_context()
+    response = urlopen(request,context=context)
     html = response.read()
     chdt = detect(html)
     html = html.decode(chdt['encoding'])
