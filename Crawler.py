@@ -227,25 +227,27 @@ def print_crawling_info(crawled_L):
 #Jobevent crawler is a function to crawl only jobevent notices in jobsogang page
 def jobevent_crawler():
     notice_url = 'https://job.sogang.ac.kr/jobevent/list.aspx'
-    wrap_tag = [tag_info('tr',None,None,':')]
-    title_tag1 = [tag_info('td',None,None,'1:3')]
-    title_tag2 = [tag_info('td',None,None,'4')]
-    trim_str = ('<tbody>','</tbody>')
-    time_tag = None
-    crawler1 = crawler_info(wrap_tag,title_tag1,None,trim_str)
-    crawler2 = crawler_info(wrap_tag,title_tag2,None,trim_str)
-    site1 = site_info(11,[notice_url],[crawler1],[None],[True], True)
-    site2 = site_info(11,[notice_url],[crawler2],[None],[False], True)
-    crawled1 = notice_crawling(site1,0)
-    crawled2 = notice_crawling(site2,0)
-
+    cookie = make_cookie()
+    request = Request(notice_url)
+    request.add_header('cookie',cookie)
+    response = urlopen(request)
+    html = response.read()
+    chdt = detect(html)
+    html = html.decode(chdt['encoding'])
+    soup = BeautifulSoup(html,'html.parser')
     now_dt = datetime.now()
-    ret_L = []
-    for i in range(len(crawled2)):
-        if crawled2[i].title != '-':
-            ret_L.append(crawling_info(11,now_dt.year,now_dt.month,now_dt.day\
-                                    ,crawled1[i].title,\
-                                    crawled1[i].url))
+    L = soup.find_all('img',{'alt':'신청'})
+    ret_L= []
+    for wrapper in L:
+        wrapper = wrapper.find_parent('tr')
+        title = wrapper.find('a').text
+        url = None
+        year = now_dt.year
+        month = now_dt.month
+        day = now_dt.day
+        url = 'https://job.sogang.ac.kr/jobevent/'+ wrapper.find('a')['href']
+        ret_L.append(crawling_info(11,year,month,day,title,url))
+
     return ret_L
 
 ####################################    DB part  start  ##########################################
